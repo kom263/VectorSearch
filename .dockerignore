@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+.git
+.gitignore
+*.md
+!README.md
+test_api.py
+test_output.txt
+.venv
+env
+venv
+.env
