@@ -84,15 +84,11 @@ User Query (free text)
 
 ---
 
-## API Endpoints
+## API Endpoint
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/` | Health check & system status |
 | `POST` | `/search` | **Main search** — accepts natural language queries |
-| `GET` | `/properties` | List all properties in the database |
-| `GET` | `/properties/{id}` | Get a single property by ID |
-| `POST` | `/reindex` | Re-ingest data and rebuild vector index |
 
 ---
 
@@ -236,20 +232,16 @@ curl -X POST http://localhost:8000/search \
 
 ### 1. How the Query Parser Works
 
-The query parser (`app/query_parser.py`) uses a **regex + keyword matching** approach to extract structured signals from free-text:
+The query parser (`app/query_parser.py`) uses **Google Gemini LLM** (gemini-2.0-flash) to intelligently extract structured filters from free-text queries:
 
-| Signal | Technique | Examples |
-|--------|-----------|----------|
-| **Budget** | Regex patterns matching price phrases | `under 40k`, `below 2 lakh`, `max 50000`, `20k-50k` |
-| **Bedrooms** | Regex for `N bedroom/BHK/BR` patterns | `2 bedroom`, `3BHK`, `studio` (maps to 1) |
-| **Property type** | Keyword dictionary mapping | `flat` -> `apartment`, `villa`, `studio`, `penthouse` |
-| **Locations** | Matched against known neighborhoods/cities from dataset | `Pine Street`, `city centre` |
-| **Amenities** | Matched against a curated set of 30+ amenity keywords | `parking`, `gym`, `pool`, `balcony`, `pet friendly` |
-| **Preferences** | Matched against lifestyle/proximity signals | `near school`, `calm`, `sea view`, `pet friendly` |
+| Feature | How It Works |
+|---------|--------------|
+| **Negation** | "not on Pine Street" correctly excludes Pine Street from results |
+| **Unit Disambiguation** | "40k sq ft" = area, "under 40k" = budget |
+| **Semantic Mapping** | "where my dog can live" → `pet_friendly` amenity |
+| **Contradiction Handling** | "under 50k and above 100k" → both set to null |
 
-**Key design:** At startup, the parser is populated with actual values from the dataset (neighborhoods, amenities, nearby place types). This makes it adaptive — it works with any dataset without code changes.
-
-**Fallback behavior:** If no structured signals are found, the system still returns relevant results using pure semantic vector similarity.
+**Fallback:** If the Gemini API is unavailable, it falls back to a regex-based parser for reliability.
 
 ### 2. Ranking / Boosting Strategy
 
@@ -287,7 +279,7 @@ Each result includes a human-readable explanation showing the base similarity sc
 | Decision | Rationale | Trade-off |
 |----------|-----------|-----------|
 | **In-memory Qdrant** | Zero setup — no Docker or external service needed | Data reloaded on each restart; not production-scale |
-| **Lightweight regex parser** instead of LLM | Fast, deterministic, no API costs, no latency | Cannot handle complex rephrasing (e.g., "I need somewhere my dog can live") |
+| **Gemini LLM parser** with regex fallback | Handles negation, semantic mapping, unit disambiguation | Requires API key; adds ~1s latency per query |
 | **Additive boost scoring** | Simple, interpretable, easy to tune weights | Not as nuanced as learned-to-rank models |
 | **Distance-aware proximity boost** | Directly uses `distance_m` from dataset for precise relevance | Requires structured `nearby_places` data in the dataset |
 | **all-MiniLM-L6-v2** model | Good balance of quality vs speed; runs on CPU | Larger models (e.g., `all-mpnet-base-v2`) may give better semantic matching |
@@ -311,7 +303,7 @@ AI Assignment/
     ├── __init__.py
     ├── models.py           # Pydantic data models (Property, NearbyPlace, SearchResult)
     ├── embeddings.py       # Sentence-Transformer embedding service
-    ├── query_parser.py     # NLP query parser (regex + keyword heuristics)
+    ├── query_parser.py     # Gemini LLM query parser with regex fallback
     ├── search.py           # Hybrid search engine with proximity boosting
     └── ingestion.py        # Data ingestion & Qdrant vector indexing
 ```
@@ -326,7 +318,7 @@ AI Assignment/
 | Vector Database | Qdrant (in-memory) |
 | Embeddings | Sentence-Transformers (`all-MiniLM-L6-v2`, 384-dim) |
 | Data Validation | Pydantic v2 |
-| NLP Parsing | Regex + heuristic keyword matching |
+| NLP Parsing | Google Gemini LLM (gemini-2.0-flash) with regex fallback |
 | Server | Uvicorn (ASGI) |
 
 ---
