@@ -13,7 +13,7 @@ from app.models import (
     Property,
 )
 from app.ingestion import ingest_properties, load_properties
-from app.query_parser import parse_query
+from app.query_parser import parse_query, _gemini_model, _init_gemini, _gemini_initialized
 from app.search import PropertySearchEngine
 
 logging.basicConfig(
@@ -83,6 +83,19 @@ async def health_check():
         total_properties=len(properties_cache),
         index_ready=index_ready,
     )
+
+
+@app.get("/debug/parser", tags=["Debug"])
+async def debug_parser():
+    import os
+    _init_gemini()
+    from app.query_parser import _gemini_model as gm, _gemini_initialized as gi
+    return {
+        "gemini_api_key_set": bool(os.environ.get("GEMINI_API_KEY")),
+        "gemini_api_key_length": len(os.environ.get("GEMINI_API_KEY", "")),
+        "gemini_model_initialized": gm is not None,
+        "gemini_initialized_flag": gi,
+    }
 
 
 @app.post("/search", response_model=SearchResponse, tags=["Search"])
