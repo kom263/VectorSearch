@@ -12,68 +12,8 @@ _known_neighborhoods: Set[str] = set()
 _known_amenities: Set[str] = set()
 _known_nearby_types: Set[str] = set()
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 _gemini_model = None
-
-if GEMINI_API_KEY:
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        _gemini_model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            system_instruction="""You are a real-estate search query parser. Given a user's natural-language property search query, extract structured filters as JSON.
-
-RESPONSE FORMAT — return ONLY valid JSON, no markdown fences, no explanation:
-{
-  "budget_min": <number or null>,
-  "budget_max": <number or null>,
-  "bedrooms": <int or null>,
-  "bathrooms": <int or null>,
-  "property_type": <string or null>,
-  "locations": [<strings>],
-  "amenities": [<strings>],
-  "preferences": [<strings>]
-}
-
-EXTRACTION RULES:
-
-1. BUDGET: Interpret Indian currency shorthands: k=thousand, L/lac/lakh=100000, Cr/crore=10000000. Only extract as budget when the number refers to PRICE/COST. "40k sq ft" is an AREA, not a budget. "under 40k" with no area unit IS a budget.
-
-2. NEGATION: If a location, amenity, or preference is NEGATED ("not on Pine Street", "no gym", "away from highway"), do NOT include it in the positive lists. Simply omit it entirely.
-
-3. SEMANTIC MAPPING for amenities — map natural phrases to canonical amenity names:
-   - "where my dog can live", "pet ok", "pets allowed" → "pet_friendly"
-   - "place to work out", "exercise" → "gym"
-   - "can park my car" → "parking"
-   - "place to swim" → "swimming pool"
-   - "connected to internet", "has wifi" → "wifi"
-   - "air conditioned", "has AC" → "ac"
-   - "fully furnished" → "furnished"
-   - "has a garden", "green space" → "garden"
-   - "safe", "gated" → "security"
-
-4. PROPERTY TYPES: apartment, villa, studio, penthouse, loft, cottage, farmhouse, co-living, duplex. Map synonyms: flat→apartment, house/bungalow→villa.
-
-5. PREFERENCES: Lifestyle/proximity phrases like "near school", "quiet area", "sea view", "family friendly", "near metro", "eco-friendly". Include them as-is in the preferences list.
-
-6. LOCATIONS: City names and neighborhood names the user wants to live IN. Only include locations the user is POSITIVELY requesting (not negated).
-
-7. CONTRADICTIONS: If budget_min > budget_max, set BOTH to null. If other filters contradict, prefer the most recent/specific one.
-
-8. If a field has no value, use null for scalars and [] for lists.
-
-KNOWN VALUES (from the dataset):
-{context}
-
-Return ONLY the JSON object.""",
-        )
-        logger.info("Gemini LLM query parser initialized successfully")
-    except Exception as e:
-        logger.warning(f"Failed to initialize Gemini: {e}. Falling back to regex parser.")
-        _gemini_model = None
-else:
-    logger.info("GEMINI_API_KEY not set — using regex fallback parser")
-
+_gemini_initialized = False
 
 DEFAULT_AMENITIES = {
     "parking", "gym", "swimming pool", "pool", "garden", "security",
@@ -128,6 +68,71 @@ PROPERTY_TYPE_KEYWORDS = {
     "home": "apartment",
 }
 
+SYSTEM_INSTRUCTION = """You are a real-estate search query parser. Given a user's natural-language property search query, extract structured filters as JSON.
+
+RESPONSE FORMAT — return ONLY valid JSON, no markdown fences, no explanation:
+{
+  "budget_min": <number or null>,
+  "budget_max": <number or null>,
+  "bedrooms": <int or null>,
+  "bathrooms": <int or null>,
+  "property_type": <string or null>,
+  "locations": [<strings>],
+  "amenities": [<strings>],
+  "preferences": [<strings>]
+}
+
+EXTRACTION RULES:
+
+1. BUDGET: Interpret Indian currency shorthands: k=thousand, L/lac/lakh=100000, Cr/crore=10000000. Only extract as budget when the number refers to PRICE/COST. "40k sq ft" is an AREA, not a budget. "under 40k" with no area unit IS a budget.
+
+2. NEGATION: If a location, amenity, or preference is NEGATED ("not on Pine Street", "no gym", "away from highway"), do NOT include it in the positive lists. Simply omit it entirely.
+
+3. SEMANTIC MAPPING for amenities — map natural phrases to canonical amenity names:
+   - "where my dog can live", "pet ok", "pets allowed" → "pet_friendly"
+   - "place to work out", "exercise" → "gym"
+   - "can park my car" → "parking"
+   - "place to swim" → "swimming pool"
+   - "connected to internet", "has wifi" → "wifi"
+   - "air conditioned", "has AC" → "ac"
+   - "fully furnished" → "furnished"
+   - "has a garden", "green space" → "garden"
+   - "safe", "gated" → "security"
+
+4. PROPERTY TYPES: apartment, villa, studio, penthouse, loft, cottage, farmhouse, co-living, duplex. Map synonyms: flat→apartment, house/bungalow→villa.
+
+5. PREFERENCES: Lifestyle/proximity phrases like "near school", "quiet area", "sea view", "family friendly", "near metro", "eco-friendly". Include them as-is in the preferences list.
+
+6. LOCATIONS: City names and neighborhood names the user wants to live IN. Only include locations the user is POSITIVELY requesting (not negated).
+
+7. CONTRADICTIONS: If budget_min > budget_max, set BOTH to null. If other filters contradict, prefer the most recent/specific one.
+
+8. If a field has no value, use null for scalars and [] for lists."""
+
+
+def _init_gemini():
+    global _gemini_model, _gemini_initialized
+    if _gemini_initialized:
+        return
+    _gemini_initialized = True
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        logger.info("GEMINI_API_KEY not set — using regex fallback parser")
+        return
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        _gemini_model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            system_instruction=SYSTEM_INSTRUCTION,
+        )
+        logger.info("Gemini LLM query parser initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Gemini: {e}. Falling back to regex parser.")
+        _gemini_model = None
+
 
 def register_known_values(
     cities: List[str],
@@ -150,6 +155,7 @@ def register_known_values(
 
 
 def parse_query(query: str) -> ParsedQuery:
+    _init_gemini()
     if _gemini_model:
         try:
             return _parse_with_gemini(query)
@@ -173,10 +179,6 @@ def _build_context() -> str:
 
 def _parse_with_gemini(query: str) -> ParsedQuery:
     context = _build_context()
-    prompt = _gemini_model.model._system_instruction
-    if hasattr(prompt, 'parts'):
-        pass
-
     user_prompt = f"Parse this property search query:\n\"{query}\"\n\nKnown values context:\n{context}"
 
     response = _gemini_model.generate_content(user_prompt)
