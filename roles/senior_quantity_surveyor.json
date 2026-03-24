@@ -1,0 +1,23 @@
+{
+    "role_id": "senior_quantity_surveyor",
+    "title": "Senior Quantity Surveyor",
+    "required_skills": [
+        "Cost Estimation",
+        "BOQ Preparation",
+        "Contract Management",
+        "AutoCAD",
+        "MS Project"
+    ],
+    "min_experience_years": 7,
+    "location_constraints": [
+        "Delhi",
+        "Mumbai",
+        "Hyderabad"
+    ],
+    "evaluation_criteria": "Evaluate the candidate's expertise in construction cost management, tendering processes, and value engineering. Look for demonstrated experience with large-scale infrastructure or commercial projects (>50 Cr). Proficiency in quantity takeoff, procurement, variation analysis, and knowledge of FIDIC or Indian contract standards is essential. The ideal candidate shows strong negotiation skills and can manage multiple subcontractor relationships.",
+    "alternate_roles": [
+        "junior_quantity_surveyor",
+        "cost_engineer",
+        "procurement_specialist"
+    ]
+}

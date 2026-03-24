@@ -1,0 +1,9 @@
+{
+    "role_id": "senior_electromechanical_engineer",
+    "title": "Senior Electromechanical Engineer",
+    "required_skills": ["SolidWorks", "PLC Programming", "Circuit Design", "MATLAB", "CAD"],
+    "min_experience_years": 5,
+    "location_constraints": ["Mumbai", "Pune", "Bangalore", "Remote"],
+    "evaluation_criteria": "Evaluate the candidate's ability to design integrated electromechanical systems. Look for hands-on experience with automated machinery, industrial control systems, and cross-functional hardware-software collaboration. Strong analytical problem-solving, familiarity with prototyping processes, and knowledge of embedded systems or IoT integration are highly valued. The ideal candidate can bridge mechanical and electrical engineering domains seamlessly.",
+    "alternate_roles": ["junior_electromechanical_engineer", "automation_engineer", "control_systems_engineer"]
+}
